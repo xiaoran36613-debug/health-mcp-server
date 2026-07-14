@@ -1,7 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createClient } from "@supabase/supabase-js";
-import { z } from "zod";
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -16,7 +15,7 @@ function createServer() {
 
   server.tool(
     "get_health_data",
-    "获取冉冉最新的健康数据，包括步数、心率、睡眠时长",
+    "鑾峰彇鍐夊唹鏈?鏂扮殑鍋ュ悍鏁版嵁锛屽寘鎷鏁般?佸績鐜囥?佺潯鐪犳椂闀?",
     {},
     async () => {
       const { data, error } = await supabase
@@ -28,14 +27,14 @@ function createServer() {
 
       if (error) {
         return {
-          content: [{ type: "text", text: `查询失败: ${error.message}` }],
+          content: [{ type: "text", text: `鏌ヨ澶辫触: ${error.message}` }],
         };
       }
 
-      const text = `冉冉最新健康数据（${data.created_at}）：
-- 步数：${data.steps ?? "暂无"} 步
-- 心率：${data.heart_rate ?? "暂无"} 次/分
-- 睡眠时长：${data.sleep_duration ?? "暂无"} 小时`;
+      const text = `鍐夊唹鏈?鏂板仴搴锋暟鎹紙${data.created_at}锛夛細
+- 姝ユ暟锛?${data.steps ?? "鏆傛棤"} 姝?
+- 蹇冪巼锛?${data.heart_rate ?? "鏆傛棤"} 娆?/鍒?
+- 鐫＄湢鏃堕暱锛?${data.sleep_duration ?? "鏆傛棤"} 灏忔椂`;
 
       return {
         content: [{ type: "text", text }],
@@ -47,9 +46,15 @@ function createServer() {
 }
 
 export default async function handler(req, res) {
+  if (req.method === "GET") {
+    res.status(200).json({ status: "ok", message: "health-mcp-server is running" });
+    return;
+  }
+
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
   });
+
   res.on("close", () => transport.close());
   const server = createServer();
   await server.connect(transport);
