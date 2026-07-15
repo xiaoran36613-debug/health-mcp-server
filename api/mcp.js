@@ -18,18 +18,11 @@ async function getHealthData() {
   return `冉冉最新健康数据（${data.created_at}）：\n- 步数：${data.steps ?? "暂无"} 步\n- 心率：${data.heart_rate ?? "暂无"} 次/分\n- 睡眠时长：${data.sleep_duration ?? "暂无"} 小时`;
 }
 
-function jsonResponse(res, data) {
-  res.setHeader("Content-Type", "application/json");
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS, DELETE");
-  res.setHeader("Access-Control-Allow-Headers", "*");
-  res.status(200).json(data);
-}
-
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS, DELETE");
   res.setHeader("Access-Control-Allow-Headers", "*");
+  res.setHeader("Access-Control-Expose-Headers", "mcp-session-id");
 
   if (req.method === "OPTIONS") {
     res.status(200).end();
@@ -37,15 +30,30 @@ export default async function handler(req, res) {
   }
 
   if (req.method === "GET") {
-    jsonResponse(res, { status: "ok", message: "health-mcp-server running" });
+    res.setHeader("Content-Type", "application/json");
+    res.status(200).json({ status: "ok" });
+    return;
+  }
+
+  if (req.method === "DELETE") {
+    res.status(200).end();
     return;
   }
 
   const body = req.body || {};
   const { method, id, params } = body;
 
+  // 固定session id，Vercel无状态所以用固定值
+  const SESSION_ID = "kelivo-health-session";
+
+  const reply = (data) => {
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("mcp-session-id", SESSION_ID);
+    res.status(200).json(data);
+  };
+
   if (method === "initialize") {
-    jsonResponse(res, {
+    reply({
       jsonrpc: "2.0",
       result: {
         protocolVersion: "2024-11-05",
@@ -58,13 +66,13 @@ export default async function handler(req, res) {
   }
 
   if (method === "notifications/initialized") {
-    res.setHeader("Content-Type", "application/json");
+    res.setHeader("mcp-session-id", SESSION_ID);
     res.status(202).end();
     return;
   }
 
   if (method === "tools/list") {
-    jsonResponse(res, {
+    reply({
       jsonrpc: "2.0",
       result: {
         tools: [
@@ -82,7 +90,7 @@ export default async function handler(req, res) {
 
   if (method === "tools/call" && params?.name === "get_health_data") {
     const text = await getHealthData();
-    jsonResponse(res, {
+    reply({
       jsonrpc: "2.0",
       result: { content: [{ type: "text", text }] },
       id: id ?? null,
@@ -90,7 +98,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  jsonResponse(res, {
+  reply({
     jsonrpc: "2.0",
     error: { code: -32601, message: "Method not found" },
     id: id ?? null,
