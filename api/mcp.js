@@ -18,13 +18,17 @@ async function getHealthData() {
   return `冉冉最新健康数据（${data.created_at}）：\n- 步数：${data.steps ?? "暂无"} 步\n- 心率：${data.heart_rate ?? "暂无"} 次/分\n- 睡眠时长：${data.sleep_duration ?? "暂无"} 小时`;
 }
 
-function sendSSE(res, data) {
-  res.write(`data: ${JSON.stringify(data)}\n\n`);
+function jsonResponse(res, data) {
+  res.setHeader("Content-Type", "application/json");
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS, DELETE");
+  res.setHeader("Access-Control-Allow-Headers", "*");
+  res.status(200).json(data);
 }
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS, DELETE");
   res.setHeader("Access-Control-Allow-Headers", "*");
 
   if (req.method === "OPTIONS") {
@@ -32,58 +36,63 @@ export default async function handler(req, res) {
     return;
   }
 
-  const accept = req.headers["accept"] || "";
-  const wantsSSE = accept.includes("text/event-stream");
+  if (req.method === "GET") {
+    jsonResponse(res, { status: "ok", message: "health-mcp-server running" });
+    return;
+  }
 
   const body = req.body || {};
   const { method, id, params } = body;
 
-  let result;
-
-  if (!method || method === "initialize") {
-    result = {
-      protocolVersion: "2024-11-05",
-      capabilities: { tools: {} },
-      serverInfo: { name: "health-mcp-server", version: "1.0.0" },
-    };
-  } else if (method === "tools/list") {
-    result = {
-      tools: [
-        {
-          name: "get_health_data",
-          description: "获取冉冉最新的健康数据，包括步数、心率、睡眠时长",
-          inputSchema: { type: "object", properties: {} },
-        },
-      ],
-    };
-  } else if (method === "tools/call" && params?.name === "get_health_data") {
-    const text = await getHealthData();
-    result = { content: [{ type: "text", text }] };
-  } else {
-    const response = { jsonrpc: "2.0", error: { code: -32601, message: "Method not found" }, id: id ?? null };
-    if (wantsSSE) {
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-      res.status(200);
-      sendSSE(res, response);
-      res.end();
-    } else {
-      res.status(200).json(response);
-    }
+  if (method === "initialize") {
+    jsonResponse(res, {
+      jsonrpc: "2.0",
+      result: {
+        protocolVersion: "2024-11-05",
+        capabilities: { tools: {} },
+        serverInfo: { name: "health-mcp-server", version: "1.0.0" },
+      },
+      id: id ?? null,
+    });
     return;
   }
 
-  const response = { jsonrpc: "2.0", result, id: id ?? null };
-
-  if (wantsSSE) {
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-    res.status(200);
-    sendSSE(res, response);
-    res.end();
-  } else {
-    res.status(200).json(response);
+  if (method === "notifications/initialized") {
+    res.setHeader("Content-Type", "application/json");
+    res.status(202).end();
+    return;
   }
+
+  if (method === "tools/list") {
+    jsonResponse(res, {
+      jsonrpc: "2.0",
+      result: {
+        tools: [
+          {
+            name: "get_health_data",
+            description: "获取冉冉最新的健康数据，包括步数、心率、睡眠时长",
+            inputSchema: { type: "object", properties: {} },
+          },
+        ],
+      },
+      id: id ?? null,
+    });
+    return;
+  }
+
+  if (method === "tools/call" && params?.name === "get_health_data") {
+    const text = await getHealthData();
+    jsonResponse(res, {
+      jsonrpc: "2.0",
+      result: { content: [{ type: "text", text }] },
+      id: id ?? null,
+    });
+    return;
+  }
+
+  jsonResponse(res, {
+    jsonrpc: "2.0",
+    error: { code: -32601, message: "Method not found" },
+    id: id ?? null,
+  });
 }
